@@ -6,7 +6,7 @@ import { dirname, join, relative } from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import skillRegistryExtension, { __testing, type ResolvedSkill } from "../extensions/skill-registry.ts";
+import skillRegistryExtension, { __testing, automaticWriteWarning, type ResolvedSkill } from "../extensions/skill-registry.ts";
 const skillRegistry = skillRegistryExtension;
 
 // Registered startup reads process.env directly; a suite launched from a
@@ -1418,6 +1418,27 @@ test("registered startup returns before regenerating and settles to the same out
 	assert.match(readFileSync(fixture.registry, "utf8"), /Initial skill/);
 	assert.equal(readFileSync(fixture.ignore, "utf8"), "*\n");
 	assert.ok(runtime.notices.some(({ message }) => message === "Skill registry refreshed (1 skills)"));
+});
+
+// gentle-shell#3029: an empty .git directory (a failed `git init` leftover) is
+// not Git metadata; Git ignores it, so the check must too.
+test("automatic Git tracking check ignores an empty .git directory", { skip: process.platform === "win32" }, async () => {
+	const fixture = registryFixture(false);
+	mkdirSync(join(fixture.cwd, ".git"));
+	assert.equal(await automaticWriteWarning(fixture.cwd, [".atl/skill-registry.md"]), undefined);
+});
+
+test("automatic Git tracking check stays fail-closed for a .git directory that has a HEAD", { skip: process.platform === "win32" }, async () => {
+	const fixture = registryFixture(false);
+	mkdirSync(join(fixture.cwd, ".git"));
+	writeFileSync(join(fixture.cwd, ".git", "HEAD"), "garbage\n");
+	await assert.rejects(automaticWriteWarning(fixture.cwd, [".atl/skill-registry.md"]), /Cannot verify Git tracking/);
+});
+
+test("automatic Git tracking check stays fail-closed for a .git file", { skip: process.platform === "win32" }, async () => {
+	const fixture = registryFixture(false);
+	writeFileSync(join(fixture.cwd, ".git"), "gitdir: /nonexistent/gentle-pi-gitdir\n");
+	await assert.rejects(automaticWriteWarning(fixture.cwd, [".atl/skill-registry.md"]), /Cannot verify Git tracking/);
 });
 
 // S4: a Git lookup that never answers (a repository rooted at HOME) takes the

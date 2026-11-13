@@ -560,8 +560,11 @@ async function hasNoGitMetadata(cwd: string): Promise<boolean> {
 		// Git does not inspect ancestors at or above its discovery ceiling.
 		if (directory !== resolve(cwd) && ceilings.includes(directory)) return true;
 		try {
-			await lstat(join(directory, ".git"));
-			return false;
+			const metadata = await lstat(join(directory, ".git"));
+			// A plain directory without HEAD (a failed `git init` leftover) is not a
+			// repository to Git, so it must not count as metadata. Files and links
+			// (gitfiles, redirects) stay metadata and fail closed.
+			if (!metadata.isDirectory() || await pathExists(join(directory, ".git", "HEAD"))) return false;
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false;
 		}
